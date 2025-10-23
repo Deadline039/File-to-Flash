@@ -74,7 +74,7 @@
         <item row="0" column="1">
          <widget class="QLineEdit" name="startAddrTextBox">
           <property name="text">
-           <string>0x30000200</string>
+           <string>0x400</string>
           </property>
          </widget>
         </item>
@@ -189,12 +189,21 @@
      </layout>
     </item>
     <item>
+     <widget class="QCheckBox" name="addFileIndexCheckbox">
+      <property name="text">
+       <string/>
+      </property>
+      <property name="checked">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
      <layout class="QHBoxLayout" name="horizontalLayout_2">
       <item>
-       <widget class="QCheckBox" name="addFileIndexCheckbox">
+       <widget class="QCheckBox" name="sortFileIndexCheckbox">
         <property name="text">
-         <string></string>
-         <string></string>
+         <string>Sort File Name in File Index for Binary Search (Recommand)</string>
         </property>
         <property name="checked">
          <bool>true</bool>
@@ -233,11 +242,17 @@
     </item>
     <item>
      <widget class="QTableWidget" name="fileTable">
+      <property name="alternatingRowColors">
+       <bool>false</bool>
+      </property>
       <property name="selectionMode">
        <enum>QAbstractItemView::SelectionMode::SingleSelection</enum>
       </property>
       <property name="selectionBehavior">
        <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+      </property>
+      <property name="sortingEnabled">
+       <bool>false</bool>
       </property>
       <column>
        <property name="text">

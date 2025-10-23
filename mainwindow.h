@@ -22,6 +22,7 @@ namespace Ui {
 
 QT_END_NAMESPACE
 #define MAX_FILE_INFO_NUMBER 62
+#define MAX_FILENAME_LENGTH  58
 
 class MainWindow : public QWidget {
     Q_OBJECT
@@ -61,7 +62,7 @@ private:
 
     QString outputFile;
 
-    typedef struct {
+    typedef struct fileListStruct {
         QString path;
         QString name;
         quint32 address;
@@ -74,7 +75,7 @@ private:
     quint32 alignment;
     qint64 totalSize;
 
-    QList<fileList_t *> fileList;
+    QList<fileList_t> fileList;
     QByteArray fileBuffer;
 
     struct {
@@ -83,14 +84,14 @@ private:
         struct {
             uint32_t address;
             uint32_t size;
-            char fileName[58];
+            char fileName[MAX_FILENAME_LENGTH];
         } __attribute__((packed)) fileInfo[MAX_FILE_INFO_NUMBER];
     } __attribute__((packed)) fileIndex;
 
 
-    QString bytes2Text(const quint8 *data, qsizetype len);
+    static QString bytes2Text(const quint8 *data, qsizetype len);
 
-    void refreshFileList();
+    void refreshFileAddress();
 
     void refreshTable();
 

@@ -15,16 +15,17 @@ extern "C" {
 
 #include <stdint.h>
 
-#define flash_addr_t          uint32_t
-#define flash_size_t          uint32_t
+#define flash_addr_t             uint32_t
+#define flash_size_t             uint32_t
 
-#define FLASH_FS_INFO_ADDR    (flash_addr_t)(0x400)
-#define FLASH_FS_FILENAME_LEN 58
-#define FLASH_FS_MAX_FILE_NUM 62
+#define FLASH_FS_INFO_ADDR       (flash_addr_t)(0x0)
+#define FLASH_FS_FILENAME_LEN    58
+#define FLASH_FS_MAX_FILE_NUM    62
+#define FLASH_FS_FILENAME_SORTED 1
 
 /* You should implement this interface in your source file. */
-extern void w25qxx_fs_read(flash_addr_t address, void *buf, flash_size_t size);
-#define FLASH_FS_READ w25qxx_fs_read
+extern void file_read(flash_addr_t address, void *buf, flash_size_t size);
+#define FLASH_FS_READ file_read
 
 void flash_fs_init(void);
 flash_addr_t flash_fs_get_file_addr(const char *file_name);

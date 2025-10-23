@@ -11,6 +11,7 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <algorithm>
 
 #include "mainwindow.h"
 
@@ -62,58 +63,59 @@ MainWindow::~MainWindow() {
 
 void MainWindow::onChangeOutputFileButtonClicked() {
     QFileDialog fileDialog;
-    QString suffix = "*." + ui->outputFormatComboBox->currentText();
-    QString fileName = fileDialog.getSaveFileName(this, "Save file", "", suffix);
-    if (!fileName.isEmpty()) {
+    const QString suffix = "*." + ui->outputFormatComboBox->currentText();
+    if (const QString fileName = fileDialog.getSaveFileName(this, "Save file", "", suffix); !fileName.isEmpty()) {
         ui->outputFilePathTextBox->setText(fileName);
     }
 }
 
 void MainWindow::onAddFilesButtonClicked() {
     QFileDialog fileDialog;
-    const QString filePath = fileDialog.getOpenFileName(this, "Open file", "", "*");
-    if (filePath.isEmpty()) {
+    const QStringList filePaths = QFileDialog::getOpenFileNames(this, "Select files", "", "*");
+    if (filePaths.length() <= 0) {
         return;
     }
 
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::warning(this, "Error", "Open file " + filePath + " error: " + file.errorString());
-        return;
-    }
+    for (const QString& filePath: filePaths) {
+        QFile file(filePath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, "Error", "Open file " + filePath + " error: " + file.errorString());
+            continue;
+        }
 
-    quint32 fileAddress;
-    if (ui->fileTable->rowCount() <= 0) {
-        fileAddress = ADDRESS_ALIGNMENT(fileStartAddress);
-    } else {
-        /* last item address + size */
-        fileAddress = ADDRESS_ALIGNMENT(flashStartAddress + totalSize);
-    }
+        quint32 fileAddress;
+        if (ui->fileTable->rowCount() <= 0) {
+            fileAddress = ADDRESS_ALIGNMENT(fileStartAddress);
+        } else {
+            /* last item address + size */
+            fileAddress = ADDRESS_ALIGNMENT(flashStartAddress + totalSize);
+        }
 
-    const qint64 fileSize = file.size();
+        const qint64 fileSize = file.size();
 
-    if ((fileAddress + fileSize) > (flashStartAddress + flashSize)) {
-        QMessageBox::warning(this, "Error", "File exceed the flash. ");
+        if ((fileAddress + fileSize) > (flashStartAddress + flashSize)) {
+            QMessageBox::warning(this, "Error", "File exceed the flash. ");
+            file.close();
+            break;
+        }
+
+        const QFileInfo fileInfo(file);
+        fileList_t newFileItem;
+        newFileItem.name = fileInfo.fileName();
+        newFileItem.path = filePath;
+        newFileItem.address = fileAddress;
+        newFileItem.size = fileSize;
+        fileList.append(newFileItem);
         file.close();
-        return;
+
+        qDebug() << "=========================== File Index: " << fileList.count() - 1;
+        qDebug() << "File path: " << filePath;
+        qDebug() << "File size: " << newFileItem.size;
+        qDebug() << "File address: " << newFileItem.address;
+        qDebug() << "Total size: " << totalSize;
     }
 
-    const QFileInfo fileInfo(file);
-    auto *newFileItem = new fileList_t;
-    newFileItem->name = fileInfo.fileName();
-    newFileItem->path = filePath;
-    newFileItem->address = fileAddress;
-    newFileItem->size = fileSize;
-    fileList.append(newFileItem);
-    file.close();
-
-    qDebug() << "===========================\nFile Index: " << fileList.count() - 1;
-    qDebug() << "File path: " << filePath;
-    qDebug() << "File size: " << newFileItem->size;
-    qDebug() << "File address: " << newFileItem->address;
-    qDebug() << "Total size: " << totalSize;
-
-    refreshFileList();
+    refreshFileAddress();
     refreshTable();
 }
 
@@ -122,9 +124,8 @@ void MainWindow::onRemoveFilesButtonClicked() {
         return;
     }
 
-    delete fileList.at(ui->fileTable->currentRow());
-    fileList.remove(ui->fileTable->currentRow());
-    refreshFileList();
+    fileList.removeAt(ui->fileTable->currentRow());
+    refreshFileAddress();
     refreshTable();
 }
 
@@ -136,7 +137,7 @@ void MainWindow::onMoveUpButtonClicked() {
     const int rowIndex = ui->fileTable->currentRow();
     fileList.swapItemsAt(rowIndex, rowIndex - 1);
     ui->fileTable->setCurrentCell(rowIndex - 1, 0);
-    refreshFileList();
+    refreshFileAddress();
     refreshTable();
 }
 
@@ -154,13 +155,13 @@ void MainWindow::onMoveDownButtonClicked() {
     const int rowIndex = ui->fileTable->currentRow();
     fileList.swapItemsAt(rowIndex, rowIndex + 1);
     ui->fileTable->setCurrentCell(rowIndex + 1, 0);
-    refreshFileList();
+    refreshFileAddress();
     refreshTable();
 }
 
 void MainWindow::onStartOutputButtonClicked() {
     if (ui->outputFilePathTextBox->text().isEmpty()) {
-        return;
+        onChangeOutputFileButtonClicked();
     }
 
     /* Set file suffix */
@@ -182,7 +183,7 @@ void MainWindow::onStartOutputButtonClicked() {
 
     /* Refresh address data */
     onFlashSizeTextChanged();
-    refreshFileList();
+    refreshFileAddress();
 
     const quint32 fileCount = fileList.count();
 
@@ -194,6 +195,17 @@ void MainWindow::onStartOutputButtonClicked() {
             QMessageBox::warning(this, "Error", "File number out of range.");
             return;
         }
+        QVector<quint32> arrayIndex;
+        for (int i = 0; i < fileCount; i++) {
+            /* The fileIndex order same as fileList*/
+            arrayIndex.append(i);
+        }
+        if (ui->sortFileIndexCheckbox->isCheckable()) {
+            /* Sort file name indirectly. */
+            std::ranges::sort(arrayIndex, [&](int a, int b){
+                return QString::compare(fileList.at(a).name, fileList.at(b).name, Qt::CaseSensitive) < 0;
+            });
+        }
 
         memset(&fileIndex, 0, sizeof(fileIndex));
 
@@ -201,9 +213,9 @@ void MainWindow::onStartOutputButtonClicked() {
 
         /* Write file index */
         for (int i = 0; i < fileCount; i++) {
-            fileIndex.fileInfo[i].address = fileList.at(i)->address;
-            fileIndex.fileInfo[i].size = fileList.at(i)->size;
-            qstrncpy(fileIndex.fileInfo[i].fileName, fileList.at(i)->name.toUtf8(),
+            fileIndex.fileInfo[i].address = fileList.at(arrayIndex[i]).address;
+            fileIndex.fileInfo[i].size = fileList.at(arrayIndex[i]).size;
+            qstrncpy(fileIndex.fileInfo[i].fileName, fileList.at(arrayIndex[i]).name.toUtf8(),
                      sizeof(fileIndex.fileInfo[i].fileName));
         }
         memcpy(fileBuffer.data(), &fileIndex, sizeof(fileIndex));
@@ -213,10 +225,10 @@ void MainWindow::onStartOutputButtonClicked() {
     /* Write files */
     qsizetype bufferStart = 0;
     for (int i = 0; i < fileCount; i++) {
-        currentFile.setFileName(fileList.at(i)->path);
+        currentFile.setFileName(fileList.at(i).path);
         if (!currentFile.open(QFile::ReadOnly)) {
             QMessageBox::warning(this, "Error",
-                                 "Open file `" + fileList.at(i)->path + "` error: " + outputFile.errorString());
+                                 "Open file `" + fileList.at(i).path + "` error: " + outputFile.errorString());
             continue;
         }
         QByteArray data = currentFile.readAll();
@@ -228,7 +240,7 @@ void MainWindow::onStartOutputButtonClicked() {
             return;
         }
 
-        bufferStart = fileList.at(i)->address - flashStartAddress;
+        bufferStart = fileList.at(i).address - flashStartAddress;
         memcpy(fileBuffer.data() + bufferStart, data.constData(), data.size());
         currentFile.close();
     }
@@ -266,7 +278,7 @@ void MainWindow::onOutputFormatChanged(int index) {
 
 void MainWindow::onAddressAlignmentChanged(int index) {
     alignment = ui->addressAlignComboBox->currentText().toInt();
-    refreshFileList();
+    refreshFileAddress();
     refreshTable();
 }
 
@@ -277,17 +289,19 @@ void MainWindow::onStartAddrTextChanged(const QString &text) {
     } else {
         fileStartAddress = flashStartAddress;
     }
-    refreshFileList();
+    refreshFileAddress();
     refreshTable();
 }
 
 void MainWindow::onAddFileIndexStateChanged(Qt::CheckState state) {
     if (state == Qt::Checked) {
         fileStartAddress = flashStartAddress + sizeof(fileIndex);
+        ui->sortFileIndexCheckbox->setEnabled(true);
     } else {
         fileStartAddress = flashStartAddress;
+        ui->sortFileIndexCheckbox->setDisabled(true);
     }
-    refreshFileList();
+    refreshFileAddress();
     refreshTable();
 }
 
@@ -388,11 +402,11 @@ void MainWindow::onFlashSizeUnitChanged(int index) {
     }
 }
 
-void MainWindow::refreshFileList() {
+void MainWindow::refreshFileAddress() {
     quint32 fileAddress = ADDRESS_ALIGNMENT(fileStartAddress);
     for (int i = 0; i < fileList.count(); i++) {
-        fileList.at(i)->address = fileAddress;
-        fileAddress += fileList.at(i)->size;
+        fileList[i].address = fileAddress;
+        fileAddress += fileList.at(i).size;
         /* next file address */
         fileAddress = ADDRESS_ALIGNMENT(fileAddress);
     }
@@ -404,7 +418,7 @@ void MainWindow::refreshTable() {
 
     /* Add item and refresh text */
     for (int index = 0; index < fileList.count(); index++) {
-        const fileList_t *currentFile = fileList.at(index);
+        const fileList_t *currentFile = &fileList.at(index);
 
         if (index >= ui->fileTable->rowCount()) {
             ui->fileTable->insertRow(index);
